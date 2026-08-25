@@ -4,10 +4,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 import jwt
 from cryptography.fernet import Fernet
-from passlib.context import CryptContext
+import secrets
 from sih.core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def _derive_fernet_key(secret: str) -> bytes:
     key_hash = hashlib.sha256(secret.encode()).digest()
@@ -16,10 +14,16 @@ def _derive_fernet_key(secret: str) -> bytes:
 fernet = Fernet(_derive_fernet_key(settings.SECRET_KEY))
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = secrets.token_hex(16)
+    pw_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+    return f"{salt}${pw_hash}"
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if "$" not in hashed_password:
+        return False
+    salt, pw_hash = hashed_password.split("$", 1)
+    check_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+    return secrets.compare_digest(pw_hash, check_hash)
 
 def create_access_token(subject: str | Any, expires_delta: timedelta | None = None, extra_claims: dict | None = None) -> str:
     if expires_delta:
